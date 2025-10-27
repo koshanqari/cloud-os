@@ -23,7 +23,7 @@ export class BunnyAPI {
 
   async testConnection(): Promise<boolean> {
     try {
-      const url = `${this.getBaseUrl()}/`
+      const url = `${this.getBaseUrl()}`
       const response = await axios.get(url, {
         headers: this.getHeaders(),
       })
