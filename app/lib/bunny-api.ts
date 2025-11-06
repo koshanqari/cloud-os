@@ -26,45 +26,26 @@ export class BunnyAPI {
 
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
-      const url = this.getBaseUrl()
-      console.log('Testing connection to:', url)
-      console.log('Using headers:', { ...this.getHeaders(), AccessKey: '***' })
-      
-      const response = await axios.get(url, {
-        headers: this.getHeaders(),
+      // Use API route to proxy the request server-side (avoids CORS issues)
+      const response = await axios.post('/api/bunny/test', {
+        host: this.connection.host,
+        user: this.connection.user,
+        password: this.connection.password,
       })
-      console.log('Connection test response:', response.status)
-      return { success: response.status === 200 }
+      
+      return response.data
     } catch (error: any) {
       console.error('Connection test failed:', error)
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-      })
       
-      // Provide more detailed error message
-      let errorMessage = 'Connection failed'
-      if (error.response) {
-        // Server responded with error status
-        const status = error.response.status
-        const statusText = error.response.statusText
-        if (status === 401) {
-          errorMessage = 'Authentication failed. Please check your Access Key (password).'
-        } else if (status === 404) {
-          errorMessage = 'Storage zone not found. Please check your User (storage zone name).'
-        } else {
-          errorMessage = `Server error: ${status} ${statusText}`
-        }
-      } else if (error.request) {
-        // Request was made but no response received
-        errorMessage = 'No response from server. This might be a CORS or network issue. Check your network connection.'
-      } else {
-        // Error setting up the request
-        errorMessage = error.message || 'Connection failed'
+      // Handle API route errors
+      if (error.response?.data) {
+        return error.response.data
       }
-      return { success: false, error: errorMessage }
+      
+      return {
+        success: false,
+        error: error.message || 'Connection failed. Please check your credentials and try again.',
+      }
     }
   }
 
