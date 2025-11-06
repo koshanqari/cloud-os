@@ -19,13 +19,11 @@ export default function ConnectionManager({
   setIsLoading,
 }: ConnectionManagerProps) {
   const [formData, setFormData] = useState({
-    host: 'storage.bunnycdn.com', // Fixed for Bunny CDN
-    user: '', // Storage Zone Name
-    password: '', // Access Key
-    port: 443, // Fixed for Bunny CDN (HTTPS)
-    url: '', // Pull Zone URL
-    apiKey: '',
-    libraryId: '',
+    host: 'storage.bunnycdn.com',
+    user: '',
+    password: '',
+    port: 443,
+    url: '',
   })
   const [useEnvVars, setUseEnvVars] = useState(true) // Default to true
 
@@ -35,7 +33,12 @@ export default function ConnectionManager({
   }, [])
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    if (field === 'port') {
+      const portValue = value === '' ? 443 : parseInt(value, 10) || 443
+      setFormData(prev => ({ ...prev, [field]: portValue }))
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }))
+    }
   }
 
   const loadFromEnvVars = () => {
@@ -45,13 +48,11 @@ export default function ConnectionManager({
       password: process.env.NEXT_PUBLIC_FTP_PASSWORD || '',
       port: parseInt(process.env.NEXT_PUBLIC_FTP_PORT || '443'),
       url: process.env.NEXT_PUBLIC_FTP_URL || '',
-      apiKey: process.env.NEXT_PUBLIC_FTP_API_KEY || '',
-      libraryId: process.env.NEXT_PUBLIC_FTP_LIBRARY_ID || '',
     })
   }
 
   const handleConnect = async () => {
-    if (!formData.user || !formData.password || !formData.url) {
+    if (!formData.host || !formData.user || !formData.password || !formData.url) {
       onConnectionError('Please fill in all required fields')
       return
     }
@@ -60,13 +61,11 @@ export default function ConnectionManager({
 
     try {
       const connection: BunnyConnection = {
-        host: 'storage.bunnycdn.com', // Fixed host for Bunny CDN
+        host: formData.host,
         user: formData.user,
         password: formData.password,
-        port: 443, // HTTPS port for Bunny CDN
+        port: formData.port,
         url: formData.url,
-        apiKey: formData.apiKey || undefined,
-        libraryId: formData.libraryId || undefined,
       }
 
       const api = new BunnyAPI(connection)
@@ -106,7 +105,15 @@ export default function ConnectionManager({
 
           <div className="space-y-4">
             <FieldText
-              label="Storage Zone Name"
+              label="Host"
+              placeholder="storage.bunnycdn.com"
+              value={formData.host}
+              onChange={(e) => handleInputChange('host', e.target.value)}
+              required
+            />
+
+            <FieldText
+              label="User"
               placeholder="Enter storage zone name (e.g., iba-consulting-prod)"
               value={formData.user}
               onChange={(e) => handleInputChange('user', e.target.value)}
@@ -114,11 +121,20 @@ export default function ConnectionManager({
             />
 
             <FieldText
-              label="Access Key"
+              label="Pass"
               placeholder="Enter your access key"
               value={formData.password}
               onChange={(e) => handleInputChange('password', e.target.value)}
               type="password"
+              required
+            />
+
+            <FieldText
+              label="Port"
+              placeholder="443"
+              value={formData.port ? formData.port.toString() : ''}
+              onChange={(e) => handleInputChange('port', e.target.value)}
+              type="number"
               required
             />
 
@@ -128,20 +144,6 @@ export default function ConnectionManager({
               value={formData.url}
               onChange={(e) => handleInputChange('url', e.target.value)}
               required
-            />
-
-            <FieldText
-              label="API Key (Optional)"
-              placeholder="Enter your API key for advanced features"
-              value={formData.apiKey}
-              onChange={(e) => handleInputChange('apiKey', e.target.value)}
-            />
-
-            <FieldText
-              label="Library ID (Optional)"
-              placeholder="Enter your library ID"
-              value={formData.libraryId}
-              onChange={(e) => handleInputChange('libraryId', e.target.value)}
             />
           </div>
 
@@ -166,9 +168,7 @@ export default function ConnectionManager({
 NEXT_PUBLIC_FTP_USER=your-storage-zone-name
 NEXT_PUBLIC_FTP_PASSWORD=your-access-key
 NEXT_PUBLIC_FTP_PORT=443
-NEXT_PUBLIC_FTP_URL=https://your-pull-zone.b-cdn.net
-NEXT_PUBLIC_FTP_API_KEY=your-api-key
-NEXT_PUBLIC_FTP_LIBRARY_ID=your-library-id`}
+NEXT_PUBLIC_FTP_URL=https://your-pull-zone.b-cdn.net`}
             </pre>
           </div>
         </div>

@@ -90,6 +90,14 @@ export default function Home() {
                 title: 'Success',
                 description: message,
               })}
+              onDisconnect={() => {
+                setConnection(null)
+                addFlag({
+                  appearance: 'success',
+                  title: 'Disconnected',
+                  description: 'Successfully disconnected from storage',
+                })
+              }}
             />
           )}
 

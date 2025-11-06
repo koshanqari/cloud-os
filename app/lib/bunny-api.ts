@@ -9,8 +9,11 @@ export class BunnyAPI {
   }
 
   private getBaseUrl(): string {
+    const host = this.connection.host || 'storage.bunnycdn.com'
     const user = this.connection.user
-    return `https://storage.bunnycdn.com/${user}/`
+    // Remove protocol if present, we'll add https://
+    const cleanHost = host.replace(/^https?:\/\//, '')
+    return `https://${cleanHost}/${user}/`
   }
 
   private getHeaders() {

@@ -17,7 +17,8 @@ import {
   Home, 
   ArrowLeft,
   Copy,
-  ChevronDown as ChevronDownIcon
+  ChevronDown as ChevronDownIcon,
+  LogOut
 } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
 import { BunnyConnection, BunnyFile, ImageOptimizationOptions } from '../types/bunny'
@@ -29,9 +30,10 @@ interface FileManagerProps {
   connection: BunnyConnection
   onError: (error: string) => void
   onSuccess: (message: string) => void
+  onDisconnect: () => void
 }
 
-export default function FileManager({ connection, onError, onSuccess }: FileManagerProps) {
+export default function FileManager({ connection, onError, onSuccess, onDisconnect }: FileManagerProps) {
   const [files, setFiles] = useState<BunnyFile[]>([])
   const [currentPath, setCurrentPath] = useState('/')
   const [isLoading, setIsLoading] = useState(false)
@@ -414,6 +416,13 @@ export default function FileManager({ connection, onError, onSuccess }: FileMana
               <span className="text-sm text-gray-500">
                 {connection.user}
               </span>
+              <Button
+                appearance="subtle"
+                onClick={onDisconnect}
+                title="Disconnect"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </div>
@@ -531,8 +540,8 @@ export default function FileManager({ connection, onError, onSuccess }: FileMana
                   />
                 </div>
               ) : (
-                <div className="flex-1 relative">
-                  <div className="h-full overflow-y-auto overflow-x-auto">
+                <div className="flex-1 relative min-h-0">
+                  <div className="absolute inset-0 overflow-y-auto overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-200">
