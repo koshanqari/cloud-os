@@ -24,16 +24,47 @@ export class BunnyAPI {
     }
   }
 
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
       const url = this.getBaseUrl()
+      console.log('Testing connection to:', url)
+      console.log('Using headers:', { ...this.getHeaders(), AccessKey: '***' })
+      
       const response = await axios.get(url, {
         headers: this.getHeaders(),
       })
-      return response.status === 200
-    } catch (error) {
+      console.log('Connection test response:', response.status)
+      return { success: response.status === 200 }
+    } catch (error: any) {
       console.error('Connection test failed:', error)
-      return false
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+      })
+      
+      // Provide more detailed error message
+      let errorMessage = 'Connection failed'
+      if (error.response) {
+        // Server responded with error status
+        const status = error.response.status
+        const statusText = error.response.statusText
+        if (status === 401) {
+          errorMessage = 'Authentication failed. Please check your Access Key (password).'
+        } else if (status === 404) {
+          errorMessage = 'Storage zone not found. Please check your User (storage zone name).'
+        } else {
+          errorMessage = `Server error: ${status} ${statusText}`
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'No response from server. This might be a CORS or network issue. Check your network connection.'
+      } else {
+        // Error setting up the request
+        errorMessage = error.message || 'Connection failed'
+      }
+      return { success: false, error: errorMessage }
     }
   }
 

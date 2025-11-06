@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button, Card, FieldText, Checkbox } from './ui'
 import { BunnyConnection } from '../types/bunny'
 import { BunnyAPI } from '../lib/bunny-api'
@@ -25,12 +25,9 @@ export default function ConnectionManager({
     port: 443,
     url: '',
   })
-  const [useEnvVars, setUseEnvVars] = useState(true) // Default to true
+  const [useEnvVars, setUseEnvVars] = useState(false) // Default to false - don't auto-load
 
-  // Automatically load environment variables on component mount
-  useEffect(() => {
-    loadFromEnvVars()
-  }, [])
+  // Don't automatically load environment variables - only load when user checks the box
 
   const handleInputChange = (field: string, value: string) => {
     if (field === 'port') {
@@ -69,16 +66,17 @@ export default function ConnectionManager({
       }
 
       const api = new BunnyAPI(connection)
-      const isConnected = await api.testConnection()
+      const result = await api.testConnection()
 
-      if (isConnected) {
+      if (result.success) {
         onConnectionSuccess(connection)
       } else {
-        onConnectionError('Failed to connect to server. Please check your credentials.')
+        onConnectionError(result.error || 'Failed to connect to server. Please check your credentials.')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Connection error:', error)
-      onConnectionError('Connection failed. Please check your credentials and try again.')
+      const errorMessage = error?.message || 'Connection failed. Please check your credentials and try again.'
+      onConnectionError(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -94,12 +92,23 @@ export default function ConnectionManager({
             <Checkbox
               checked={useEnvVars}
               onChange={(e) => {
-                setUseEnvVars(e.target.checked)
-                if (e.target.checked) {
+                const checked = e.target.checked
+                setUseEnvVars(checked)
+                if (checked) {
+                  // Only load from env vars when checkbox is checked
                   loadFromEnvVars()
+                } else {
+                  // When unchecked, clear the form to default values
+                  setFormData({
+                    host: 'storage.bunnycdn.com',
+                    user: '',
+                    password: '',
+                    port: 443,
+                    url: '',
+                  })
                 }
               }}
-              label="Use environment variables"
+              label="Load from environment variables"
             />
           </div>
 
