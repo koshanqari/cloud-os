@@ -51,67 +51,88 @@ export class BunnyAPI {
 
   async listFiles(path: string = '/'): Promise<BunnyFile[]> {
     try {
-      // Ensure path starts with / for directories (baseUrl already ends with /)
-      const normalizedPath = path === '/' ? '' : path.startsWith('/') ? path.substring(1) : path
-      const baseUrl = this.getBaseUrl()
-      const url = `${baseUrl}${normalizedPath}${normalizedPath ? '/' : ''}`
-      
-      const response = await axios.get(url, {
-        headers: this.getHeaders(),
+      // Use API route to proxy the request server-side (avoids CORS issues)
+      const response = await axios.get('/api/bunny/files', {
+        params: {
+          host: this.connection.host,
+          user: this.connection.user,
+          password: this.connection.password,
+          path: path,
+        },
       })
       
       return response.data
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to list files:', error)
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error)
+      }
       throw new Error('Failed to list files')
     }
   }
 
   async uploadFile(file: File, path: string = '/'): Promise<void> {
     try {
-      // Normalize the path - remove leading slash if present since baseUrl already ends with /
-      const normalizedPath = path === '/' ? '' : path.startsWith('/') ? path.substring(1) : path
+      // Use API route to proxy the request server-side (avoids CORS issues)
+      const formData = new FormData()
+      formData.append('host', this.connection.host)
+      formData.append('user', this.connection.user)
+      formData.append('password', this.connection.password)
+      formData.append('path', path)
+      formData.append('file', file)
       
-      // Construct the full upload URL
-      const uploadPath = `${this.getBaseUrl()}${normalizedPath}${file.name}`
-      
-      await axios.put(uploadPath, file, {
+      await axios.post('/api/bunny/files', formData, {
         headers: {
-          'AccessKey': this.connection.password,
+          'Content-Type': 'multipart/form-data',
         },
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to upload file:', error)
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error)
+      }
       throw new Error('Failed to upload file')
     }
   }
 
   async deleteFile(path: string): Promise<void> {
     try {
-      // Ensure path starts with / for directories (baseUrl already ends with /)
-      const normalizedPath = path.startsWith('/') ? path.substring(1) : path
-      await axios.delete(`${this.getBaseUrl()}${normalizedPath}`, {
-        headers: {
-          'AccessKey': this.connection.password,
+      // Use API route to proxy the request server-side (avoids CORS issues)
+      await axios.delete('/api/bunny/files', {
+        params: {
+          host: this.connection.host,
+          user: this.connection.user,
+          password: this.connection.password,
+          path: path,
         },
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete file:', error)
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error)
+      }
       throw new Error('Failed to delete file')
     }
   }
 
   async downloadFile(path: string): Promise<Blob> {
     try {
-      // Ensure path starts with / for directories (baseUrl already ends with /)
-      const normalizedPath = path.startsWith('/') ? path.substring(1) : path
-      const response = await axios.get(`${this.getBaseUrl()}${normalizedPath}`, {
-        headers: this.getHeaders(),
+      // Use API route to proxy the request server-side (avoids CORS issues)
+      const response = await axios.get('/api/bunny/download', {
+        params: {
+          host: this.connection.host,
+          user: this.connection.user,
+          password: this.connection.password,
+          path: path,
+        },
         responseType: 'blob',
       })
       return response.data
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to download file:', error)
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error)
+      }
       throw new Error('Failed to download file')
     }
   }
