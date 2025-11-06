@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { CheckCircle, XCircle, X } from 'lucide-react'
 import ConnectionManager from './components/ConnectionManager'
 import FileManager from './components/FileManagerNew'
@@ -58,7 +59,7 @@ export default function Home() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                 <div className="flex items-center space-x-3">
-                  <img src="/logo.png" alt="CloudOS Logo" className="w-10 h-10 object-contain" />
+                  <Image src="/logo.png" alt="CloudOS Logo" width={40} height={40} className="w-10 h-10 object-contain" />
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900">CloudOS File Manager</h1>
                     <p className="text-gray-600 text-sm">

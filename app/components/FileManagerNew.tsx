@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import Image from 'next/image'
 import { Button, Card, Spinner, EmptyState, Badge, ModalDialog, FieldText, FieldRange, Select } from './ui'
 import { Table, DropdownMenu, DropdownItem, DropdownItemGroup } from './Table'
 import { 
@@ -34,6 +35,9 @@ interface FileManagerProps {
 }
 
 export default function FileManager({ connection, onError, onSuccess, onDisconnect }: FileManagerProps) {
+  // Get the storage zone name (user) which is the actual root
+  const storageZoneRoot = `/${connection.user}/`
+  
   const [files, setFiles] = useState<BunnyFile[]>([])
   const [currentPath, setCurrentPath] = useState('/')
   const [isLoading, setIsLoading] = useState(false)
@@ -44,6 +48,7 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
   const [hasError, setHasError] = useState(false)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [folderContents, setFolderContents] = useState<Map<string, BunnyFile[]>>(new Map())
+  const [folderPaths, setFolderPaths] = useState<Map<string, string>>(new Map())
   const [showAddFolderModal, setShowAddFolderModal] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [showUploadDropdown, setShowUploadDropdown] = useState(false)
@@ -56,9 +61,18 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
     setIsLoading(true)
     setHasError(false)
     try {
-      const fileList = await api.listFiles(path)
+      // Normalize path: remove storage zone name if present
+      let normalizedPath = path
+      if (normalizedPath.startsWith(`/${connection.user}/`)) {
+        normalizedPath = normalizedPath.replace(`/${connection.user}/`, '/')
+      } else if (normalizedPath === `/${connection.user}`) {
+        normalizedPath = '/'
+      }
+      
+      const fileList = await api.listFiles(normalizedPath)
       setFiles(fileList)
-      setCurrentPath(path)
+      // Store the normalized path (without storage zone name)
+      setCurrentPath(normalizedPath)
     } catch (error) {
       console.error('Error loading files:', error)
       setHasError(true)
@@ -73,8 +87,31 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
   const loadFolderTree = async () => {
     try {
       const rootFiles = await api.listFiles('/')
-      const folders = rootFiles.filter(file => file.IsDirectory)
-      setFolderTree(folders)
+      // When listing from root ('/'), all folders returned are root-level folders
+      // A folder is at root if its ObjectName doesn't contain '/' (not nested)
+      const rootFolders = rootFiles.filter(file => {
+        if (!file.IsDirectory) return false
+        // If ObjectName contains '/', it's a nested folder (e.g., "footer/gj-logos")
+        // If ObjectName doesn't contain '/', it's a root-level folder (e.g., "footer")
+        return !file.ObjectName.includes('/')
+      })
+      console.log('All files from root:', rootFiles.map(f => ({ name: f.ObjectName, path: f.Path, isDir: f.IsDirectory })))
+      console.log('Root folders filtered:', rootFolders.length, rootFolders.map(f => ({ name: f.ObjectName, path: f.Path })))
+      setFolderTree(rootFolders)
+      // Reset expanded folders and contents when reloading
+      setExpandedFolders(new Set())
+      setFolderContents(new Map())
+      setFolderPaths(new Map())
+      // Store paths for root folders using full path as key
+      const pathMap = new Map<string, string>()
+      rootFolders.forEach(folder => {
+        const fullPath = folder.ObjectName.startsWith('/') ? folder.ObjectName : `/${folder.ObjectName}/`
+        // Use full path as key to avoid collisions
+        pathMap.set(fullPath, fullPath)
+        // Also store by ObjectName for quick lookup during initial render
+        pathMap.set(`root:${folder.ObjectName}`, fullPath)
+      })
+      setFolderPaths(pathMap)
     } catch (error) {
       console.error('Error loading folder tree:', error)
     }
@@ -148,8 +185,24 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
     setShowOptimizer(true)
   }
 
-  const handleFolderClick = async (folder: BunnyFile) => {
-    const newPath = folder.ObjectName.startsWith('/') ? folder.ObjectName : `/${folder.ObjectName}/`
+  const handleFolderClick = async (folder: BunnyFile, fullPath?: string) => {
+    let newPath: string
+    if (fullPath) {
+      // Use the provided full path (from sidebar tree)
+      newPath = fullPath
+    } else {
+      // Called from file list - construct path from folder's Path and ObjectName
+      let parentPath = folder.Path === '/' || folder.Path === '' ? '/' : folder.Path.endsWith('/') ? folder.Path : `${folder.Path}/`
+      
+      // Normalize: remove storage zone name if present in parent path
+      if (parentPath.startsWith(`/${connection.user}/`)) {
+        parentPath = parentPath.replace(`/${connection.user}/`, '/')
+      } else if (parentPath === `/${connection.user}`) {
+        parentPath = '/'
+      }
+      
+      newPath = parentPath === '/' ? `/${folder.ObjectName}/` : `${parentPath}${folder.ObjectName}/`
+    }
     await loadFiles(newPath)
   }
 
@@ -179,10 +232,24 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
   }
 
   const getParentPath = (currentPath: string): string => {
-    if (currentPath === '/') return '/'
-    const pathParts = currentPath.split('/').filter(part => part !== '')
+    // Normalize path by removing storage zone name if present
+    let normalizedPath = currentPath
+    if (normalizedPath.startsWith(`/${connection.user}/`)) {
+      normalizedPath = normalizedPath.replace(`/${connection.user}/`, '/')
+    } else if (normalizedPath === `/${connection.user}`) {
+      return '/' // Storage zone root is the actual root
+    }
+    
+    if (normalizedPath === '/' || normalizedPath === '') return '/'
+    
+    const pathParts = normalizedPath.split('/').filter(part => part !== '')
     if (pathParts.length <= 1) return '/'
-    return '/' + pathParts.slice(0, -1).join('/') + '/'
+    
+    // Reconstruct parent path
+    const parentPath = '/' + pathParts.slice(0, -1).join('/') + '/'
+    
+    // If parent is root, return '/', otherwise return as is
+    return parentPath === '/' ? '/' : parentPath
   }
 
   const handleBackClick = async () => {
@@ -199,7 +266,9 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
     try {
       // Create folder by uploading a hidden .keep file
       const folderName = newFolderName.trim()
-      const folderPath = currentPath === '/' ? `/${folderName}/` : `${currentPath}${folderName}/`
+      // Ensure currentPath ends with / for proper path construction
+      const normalizedCurrentPath = currentPath === '/' ? '/' : currentPath.endsWith('/') ? currentPath : `${currentPath}/`
+      const folderPath = normalizedCurrentPath === '/' ? `/${folderName}/` : `${normalizedCurrentPath}${folderName}/`
       
       // Create a hidden .keep file to establish the folder
       const keepFile = new File([''], '.keep', { type: 'text/plain' })
@@ -256,31 +325,57 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
     }
   }
 
-  const toggleFolderExpansion = async (folder: BunnyFile) => {
-    const folderPath = folder.ObjectName
-    const isExpanded = expandedFolders.has(folderPath)
+  const toggleFolderExpansion = async (folder: BunnyFile, parentPath: string = '/') => {
+    // Get the full path for this folder
+    let fullPath: string
+    if (parentPath === '/') {
+      // Root level folder - try to get from path map first
+      fullPath = folderPaths.get(`root:${folder.ObjectName}`) || 
+        folderPaths.get(folder.ObjectName) ||
+        (folder.ObjectName.startsWith('/') ? folder.ObjectName : `/${folder.ObjectName}/`)
+    } else {
+      // Subfolder - construct path from parent
+      fullPath = `${parentPath}${folder.ObjectName}/`
+    }
+    
+    const folderKey = fullPath
+    const isExpanded = expandedFolders.has(folderKey)
     
     if (isExpanded) {
       // Collapse folder
       setExpandedFolders(prev => {
         const newSet = new Set(prev)
-        newSet.delete(folderPath)
+        newSet.delete(folderKey)
         return newSet
       })
     } else {
       // Expand folder and load its contents
-      setExpandedFolders(prev => new Set(prev).add(folderPath))
+      setExpandedFolders(prev => new Set(prev).add(folderKey))
       
       // Only load contents if we haven't loaded them before
-      if (!folderContents.has(folderPath)) {
+      if (!folderContents.has(folderKey)) {
         try {
-          const contents = await api.listFiles(folderPath)
+          const contents = await api.listFiles(fullPath)
           const subfolders = contents.filter(file => file.IsDirectory)
-          setFolderContents(prev => new Map(prev).set(folderPath, subfolders))
+          setFolderContents(prev => new Map(prev).set(folderKey, subfolders))
+          
+          // Store paths for subfolders - use the Path from API response to ensure accuracy
+          setFolderPaths(prev => {
+            const newMap = new Map(prev)
+            subfolders.forEach(subfolder => {
+              // Use the Path from the API response, which should be the parent folder path
+              const parentPathFromAPI = subfolder.Path === '/' || subfolder.Path === '' ? '/' : 
+                subfolder.Path.endsWith('/') ? subfolder.Path : `${subfolder.Path}/`
+              const subfolderPath = parentPathFromAPI === '/' ? `/${subfolder.ObjectName}/` : 
+                `${parentPathFromAPI}${subfolder.ObjectName}/`
+              newMap.set(subfolderPath, subfolderPath)
+            })
+            return newMap
+          })
         } catch (error) {
           console.error('Error loading folder contents:', error)
           // Set empty array on error
-          setFolderContents(prev => new Map(prev).set(folderPath, []))
+          setFolderContents(prev => new Map(prev).set(folderKey, []))
         }
       }
     }
@@ -321,16 +416,42 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
     }
   }
 
-  const renderFolderTree = (folders: BunnyFile[], level: number = 0) => {
+  const renderFolderTree = (folders: BunnyFile[], level: number = 0, parentPath: string = '/') => {
     return folders.map((folder) => {
-      const isExpanded = expandedFolders.has(folder.ObjectName)
-      const subfolders = folderContents.get(folder.ObjectName) || []
+      // Get the full path for this folder
+      let fullPath: string
+      if (parentPath === '/') {
+        // Root level folder
+        fullPath = folderPaths.get(`root:${folder.ObjectName}`) || 
+          folderPaths.get(folder.ObjectName) ||
+          (folder.ObjectName.startsWith('/') ? folder.ObjectName : `/${folder.ObjectName}/`)
+      } else {
+        // Subfolder - use the Path from the folder object if available (from API response)
+        // Otherwise construct from parentPath
+        if (folder.Path && folder.Path !== '/' && folder.Path !== '') {
+          // Normalize: remove storage zone name if present
+          let normalizedPath = folder.Path.endsWith('/') ? folder.Path : `${folder.Path}/`
+          if (normalizedPath.startsWith(`/${connection.user}/`)) {
+            normalizedPath = normalizedPath.replace(`/${connection.user}/`, '/')
+          } else if (normalizedPath === `/${connection.user}/`) {
+            normalizedPath = '/'
+          }
+          fullPath = `${normalizedPath}${folder.ObjectName}/`
+        } else {
+          // Fallback: construct from parentPath
+          fullPath = `${parentPath}${folder.ObjectName}/`
+        }
+      }
+      
+      const folderKey = fullPath
+      const isExpanded = expandedFolders.has(folderKey)
+      const subfolders = folderContents.get(folderKey) || []
       
       return (
         <div key={folder.Guid}>
           <div className="flex items-center">
             <button
-              onClick={() => toggleFolderExpansion(folder)}
+              onClick={() => toggleFolderExpansion(folder, parentPath)}
               className="p-1 hover:bg-gray-100 rounded"
             >
               {isExpanded ? (
@@ -340,9 +461,9 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
               )}
             </button>
             <button
-              onClick={() => handleFolderClick(folder)}
+              onClick={() => handleFolderClick(folder, fullPath)}
               className={`flex-1 flex items-center space-x-2 px-2 py-1 rounded text-left hover:bg-gray-100 ${
-                currentPath === folder.ObjectName ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                currentPath === fullPath || currentPath === fullPath.slice(0, -1) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
               }`}
               style={{ paddingLeft: `${level * 12}px` }}
             >
@@ -353,7 +474,7 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
           {isExpanded && (
             <div className="ml-4">
               {subfolders.length > 0 ? (
-                renderFolderTree(subfolders, level + 1)
+                renderFolderTree(subfolders, level + 1, fullPath)
               ) : (
                 <div className="px-2 py-1 text-xs text-gray-400 italic">
                   No folders within
@@ -372,7 +493,7 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="px-3 py-2 border-b border-gray-200">
           <div className="mb-3">
-            <img src="/logo.png" alt="CloudOS Logo" className="w-full object-contain" />
+            <Image src="/logo.png" alt="CloudOS Logo" width={256} height={64} className="w-full object-contain" />
           </div>
           <h3 className="font-semibold text-gray-900 text-center text-sm">Folders</h3>
         </div>
@@ -390,7 +511,13 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
             </button>
             
             {/* Folder Tree */}
-            {renderFolderTree(folderTree)}
+            {folderTree.length > 0 ? (
+              renderFolderTree(folderTree)
+            ) : (
+              <div className="px-2 py-2 text-sm text-gray-400 italic">
+                No folders at root level
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -402,7 +529,25 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <h2 className="text-lg font-bold text-gray-900">
-                {currentPath === '/' ? '/' : currentPath}
+                {(() => {
+                  // Remove the storage zone root from the path for display
+                  let displayPath = currentPath
+                  // Strip storage zone name if present (e.g., /iba-consulting-prod/about/ -> /about/)
+                  if (displayPath.startsWith(`/${connection.user}/`)) {
+                    displayPath = displayPath.replace(`/${connection.user}/`, '/')
+                  } else if (displayPath === `/${connection.user}`) {
+                    displayPath = '/'
+                  }
+                  // If path is root, show Root
+                  if (displayPath === '/' || displayPath === '') {
+                    return 'Root (/)'
+                  }
+                  // Ensure path starts with / for display
+                  if (!displayPath.startsWith('/')) {
+                    displayPath = `/${displayPath}`
+                  }
+                  return `Root${displayPath}`
+                })()}
               </h2>
             </div>
             <div className="flex items-center space-x-3">
@@ -416,13 +561,13 @@ export default function FileManager({ connection, onError, onSuccess, onDisconne
               <span className="text-sm text-gray-500">
                 {connection.user}
               </span>
-              <Button
-                appearance="subtle"
+              <button
                 onClick={onDisconnect}
                 title="Disconnect"
+                className="px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 bg-transparent text-gray-600 hover:bg-gray-100 focus:ring-gray-500"
               >
                 <LogOut className="w-4 h-4" />
-              </Button>
+              </button>
             </div>
           </div>
         </div>
